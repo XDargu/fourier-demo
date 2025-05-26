@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>DFT Visualization</title>
+  <style>
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background: #111;
+    }
+  </style>
+</head>
+<body>
+<canvas id="canvas" width="800" height="800"></canvas>
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const W = canvas.width;
+const H = canvas.height;
+
+const N = 64;
+let signal = [];
+
+// Generate a custom signal
+for (let i = 0; i < N; i++) {
+  const t = i / N;
+  // Mix of low + high frequency waves
+  const val =
+    //40 * Math.sin(2 * Math.PI * t * 2) + 
+    //20 * Math.sin(2 * Math.PI * t * 5) +
+    10 * Math.sin(2 * Math.PI * t * 11);
+  signal.push(val);
+}
+
+// Override with random values
+for (let i = 0; i < N; i++) {
+    signal[i] = Math.random() * 100 - 50;
+}
+
+// Override with random trailing value
+/*let prev = 0;
+for (let i = 0; i < N; i++) {
+    prev += Math.random() * 40 - 20;
+    signal[i] = prev;
+}*/
+
+// Brute-force DFT
+function dft(signal) {
+  const N = signal.length;
+  const result = [];
+
+  for (let k = 0; k < N; k++)
+  {
+    let re = 0, im = 0;
+    for (let n = 0; n < N; n++)
+    {
+      const angle = (2 * Math.PI * k * n) / N;
+      re += signal[n] * Math.cos(-angle);
+      im += signal[n] * Math.sin(-angle);
+    }
+    result.push({ re, im, freq: k, amp: Math.sqrt(re*re + im*im), phase: Math.atan2(im, re) });
+  }
+
+  return result;
+}
+
+const fourier = dft(signal).sort((a, b) => b.amp - a.amp); // sort by strength
+
+const fps = 60;
+const requiredElapsed = 1000 / fps;
+let lastTime;
+let totalTime;
+
+requestAnimationFrame(update);
+
+function update(now)
+{
+    requestAnimationFrame(update);
+
+    if (!lastTime) { lastTime = now; }
+    if (!totalTime) { totalTime = now; }
+    const elapsed = now - lastTime;
+    totalTime += elapsed;
+
+    if (elapsed > requiredElapsed)
+    {
+        draw();
+        lastTime = now;
+    }
+}
+
+function drawChart(color, getY)
+{
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    for (let i = 0; i < N; i++)
+    {
+        const x = (i / N) * W;
+        const y = getY(i);
+
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+}
+
+function interpolateColor(c0, c1, f)
+{
+    c0 = c0.match(/.{1,2}/g).map((oct)=>parseInt(oct, 16) * (1-f))
+    c1 = c1.match(/.{1,2}/g).map((oct)=>parseInt(oct, 16) * f)
+    let ci = [0,1,2].map(i => Math.min(Math.round(c0[i]+c1[i]), 255))
+    return ci.reduce((a,v) => ((a << 8) + v), 0).toString(16).padStart(6, "0")
+}
+
+function draw()
+{
+  ctx.clearRect(0, 0, W, H);
+
+  const originalH = 100;
+  
+  // Draw original signal
+  drawChart("#0f0", (i) => originalH - signal[i]);
+
+  // Reconstruct signal using frequency components
+  let sum = new Array(N).fill(0);
+  const numTerms = (totalTime * 0.01) % fourier.length; // use only the strongest few frequencies
+  for (let k = 0; k < numTerms; k++)
+  {
+    const f = fourier[k];
+    for (let i = 0; i < N; i++)
+    {
+      const t = i / N;
+      sum[i] += f.amp * Math.cos(2 * Math.PI * f.freq * t + f.phase) / N;
+    }
+  }
+
+  // Draw reconstructed signal
+  drawChart("#f80", (i) => originalH - sum[i]);
+
+  // Draw partial ones
+  for (let k = 0; k < numTerms; k++)
+  {
+    const f = fourier[k];
+
+    let col = interpolateColor("ff8800", "d29ede", k / numTerms);
+
+    drawChart("#" + col, (i) => {
+        const t = i / N;
+        const fVal = f.amp * Math.cos(2 * Math.PI * f.freq * t + f.phase) / N;
+        const y = originalH + 10*(k+6) - fVal;
+        return y;
+    });
+  }
+}
+
+draw();
+</script>
+</body>
+</html>
